@@ -1,0 +1,5 @@
+coverage/
+*.log
+.DS_Store
+# NOTE: node_modules/commander is intentionally committed (vendored dependency
+# so the composite action is self-contained and needs no network access).

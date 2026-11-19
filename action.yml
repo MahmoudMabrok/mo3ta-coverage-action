@@ -1,0 +1,122 @@
+name: mo3ta-coverage
+description: >-
+  Run tests for changed files in a PR and enforce a minimum changed-line
+  coverage threshold. Maps changed source files to related Jest tests
+  (naming convention + reverse-import walk), runs them with --coverage,
+  and fails when changed-line coverage is below the limit. Writes a
+  markdown coverage table that this action appends to the GitHub Actions
+  job summary.
+author: MahmoudMabrok
+
+branding:
+  icon: shield
+  color: green
+
+inputs:
+  base:
+    description: Base branch to compare against (e.g. origin/main)
+    required: false
+    default: origin/main
+  mode:
+    description: 'Execution mode: fast, smart, or full'
+    required: false
+    default: smart
+  depth:
+    description: 'Smart mode max reverse-dependency depth (1 or 2 recommended)'
+    required: false
+    default: '2'
+  limit:
+    description: Minimum required coverage percentage for changed lines (e.g. 80)
+    required: false
+    default: '80'
+  ci:
+    description: 'CI mode: clean console output and write a markdown table to ci-report-path'
+    required: false
+    default: 'true'
+  ci-report-path:
+    description: Where to save the CI markdown table (relative to working-directory)
+    required: false
+    default: coverage/mo3ta-coverage-report.md
+  show-covered:
+    description: Also list covered changed lines in the report
+    required: false
+    default: 'false'
+  files:
+    description: Explicit list of files to scan (space- or comma-separated) instead of auto-detecting changed files
+    required: false
+    default: ''
+  files-from:
+    description: Path to a newline-separated file list to scan instead of auto-detecting changed files
+    required: false
+    default: ''
+  report-to-summary:
+    description: Append the markdown coverage table to the GitHub Actions job summary
+    required: false
+    default: 'true'
+  working-directory:
+    description: Working directory where the CLI is executed (must contain the git checkout)
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - name: Run mo3ta-coverage
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        MO3TA_BASE: ${{ inputs.base }}
+        MO3TA_MODE: ${{ inputs.mode }}
+        MO3TA_DEPTH: ${{ inputs.depth }}
+        MO3TA_LIMIT: ${{ inputs.limit }}
+        MO3TA_CI: ${{ inputs.ci }}
+        MO3TA_CI_REPORT: ${{ inputs.ci-report-path }}
+        MO3TA_SHOW_COVERED: ${{ inputs.show-covered }}
+        MO3TA_FILES: ${{ inputs.files }}
+        MO3TA_FILES_FROM: ${{ inputs.files-from }}
+        MO3TA_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -uo pipefail
+
+        ARGS=(
+          "node" "$MO3TA_ACTION_PATH/dist/index.js"
+          "--base" "$MO3TA_BASE"
+          "--mode" "$MO3TA_MODE"
+          "--depth" "$MO3TA_DEPTH"
+          "--limit" "$MO3TA_LIMIT"
+          "--ci" "$MO3TA_CI"
+          "--ciReport" "$MO3TA_CI_REPORT"
+          "--showCovered" "$MO3TA_SHOW_COVERED"
+        )
+
+        if [ -n "$MO3TA_FILES" ]; then
+          # shellcheck disable=SC2206
+          FILES_LIST=($MO3TA_FILES)
+          ARGS+=("--files" "${FILES_LIST[@]}")
+        fi
+
+        if [ -n "$MO3TA_FILES_FROM" ]; then
+          ARGS+=("--filesFrom" "$MO3TA_FILES_FROM")
+        fi
+
+        echo "${ARGS[*]}"
+        "${ARGS[@]}"
+
+    - name: Save report to GitHub Actions summary
+      if: inputs.report-to-summary == 'true' && inputs.ci == 'true' && env.MO3TA_CI_REPORT != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        MO3TA_CI_REPORT: ${{ inputs.ci-report-path }}
+      run: |
+        set -uo pipefail
+        if [ -f "$MO3TA_CI_REPORT" ]; then
+          cat "$MO3TA_CI_REPORT" >> "${GITHUB_STEP_SUMMARY}"
+        else
+          echo "::warning::Coverage report not found at $MO3TA_CI_REPORT"
+        fi

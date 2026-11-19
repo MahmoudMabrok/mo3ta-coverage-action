@@ -46,7 +46,7 @@ jobs:
         uses: ./
         with:
           working-directory: ${{ runner.temp }}/scratch
-          base: HEAD~1
+          # no 'base' → on push the action auto-resolves to HEAD~1
           mode: fast
           # Low limit: this self-test only verifies the action runs and
           # produces the summary table (the scratch change is uncovered).

@@ -23,7 +23,6 @@ jobs:
       - name: Check changed-line coverage
         uses: MahmoudMabrok/mo3ta-coverage-action@v1
         with:
-          base: origin/main
           mode: smart     # fast | smart (default) | full
           limit: 80
 ```
@@ -35,7 +34,7 @@ the PR's "Summary" automatically — no extra steps required.
 
 | Input | Description | Default |
 |-------|-------------|---------|
-| `base` | Base branch or revision to diff against | `origin/main` |
+| `base` | Base branch/revision to diff against. Empty = auto-resolve: `pull_request` → `origin/<PR base branch>`, `push` → previous commit (`HEAD~1`, fallback `origin/main`), other events → `origin/main` | *(auto)* |
 | `mode` | `fast` (naming), `smart` (naming + reverse imports, default), `full` (`jest --findRelatedTests`) | `smart` |
 | `depth` | Max reverse-import depth for `smart` mode (1 = direct importers, 2 = also importers of importers) | `2` |
 | `limit` | Minimum changed-line coverage percentage | `80` |
@@ -62,14 +61,24 @@ the PR's "Summary" automatically — no extra steps required.
 5. When `report-to-summary: true` and `GITHUB_STEP_SUMMARY` is set, the
    action appends the markdown table to the job summary.
 
-## Usage without a pull request (e.g. on `main`)
+## Auto-resolved base
 
-Any revision accepted by `git` works for `base`:
+By default the action figures out what to diff against, based on the
+triggering event:
+
+| Event | Resolved base | Notes |
+|-------|---------------|-------|
+| `pull_request` | `origin/<PR base branch>` | uses `github.base_ref`; needs the branch fetched (default checkout does this, or use `fetch-depth: 0`) |
+| `push` | `HEAD~1` (fallback `origin/main`) | changed lines of the push, regardless of branch |
+| anything else | `origin/main` | schedule, dispatch, … |
+
+To override, pass `base` explicitly — any git ref that the checkout
+resolves works (e.g. `base: HEAD~1`, `base: origin/develop`, `base: v1.0.0`).
 
 ```yaml
 - uses: MahmoudMabrok/mo3ta-coverage-action@v1
   with:
-    base: HEAD~1
+    base: origin/develop
     limit: 70
 ```
 

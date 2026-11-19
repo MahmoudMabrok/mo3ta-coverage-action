@@ -1,0 +1,52 @@
+name: Action self-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: action-self-test
+  cancel-in-progress: false
+
+jobs:
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the action
+        uses: actions/checkout@v4
+
+      - name: Build scratch project (base commit)
+        working-directory: ${{ runner.temp }}/scratch
+        run: |
+          set -e
+          git init -q -b main .
+          npm init -y >/dev/null
+          npm pkg set scripts.test="jest"
+          npm install --no-audit --no-fund jest >/dev/null
+          printf '{ "presets": [["@babel/preset-env", { "targets": { "node": "current" } }] } }\n' > babel.config.json
+          mkdir -p src
+          printf 'export const add = (a, b) => a + b;\n' > src/calc.js
+          printf 'const { add } = require("./calc.js");\ntest("add", () => { expect(add(1, 2)).toBe(3); });\n' > src/calc.test.js
+          git add -A
+          git -c user.name=ci -c user.email=ci@ci commit -qm "base commit"
+
+      - name: Simulate a PR change (adds an uncovered function)
+        working-directory: ${{ runner.temp }}/scratch
+        run: |
+          set -e
+          printf 'export const add = (a, b) => a + b;\n\nexport function untested() {\n  const x = 99;\n  return x;\n}\n' > src/calc.js
+          git add -A
+          git -c user.name=ci -c user.email=ci@ci commit -qm "add uncovered function"
+
+      - name: Run this action against the scratch project
+        uses: ./
+        with:
+          working-directory: ${{ runner.temp }}/scratch
+          base: HEAD~1
+          mode: fast
+          # Low limit: this self-test only verifies the action runs and
+          # produces the summary table (the scratch change is uncovered).
+          limit: 1
+          ci: true

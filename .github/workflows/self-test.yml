@@ -17,6 +17,9 @@ jobs:
       - name: Check out the action
         uses: actions/checkout@v4
 
+      - name: Create scratch directory
+        run: mkdir -p "${{ runner.temp }}/scratch"
+
       - name: Build scratch project (base commit)
         working-directory: ${{ runner.temp }}/scratch
         run: |

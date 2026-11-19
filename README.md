@@ -7,6 +7,7 @@ changed lines is below the limit.
 ```yaml
 permissions:
   contents: read
+  pull-requests: write   # needed for the default PR report comment
 
 jobs:
   changed-line-coverage:
@@ -28,7 +29,9 @@ jobs:
 ```
 
 When the job runs on GitHub the action appends a markdown coverage table to
-the PR's "Summary" automatically — no extra steps required.
+the job "Summary" automatically, and (by default) posts the same report as
+a single updatable comment on the PR — re-runs replace the previous report
+instead of stacking new comments. No extra steps required.
 
 ## Inputs
 
@@ -44,6 +47,8 @@ the PR's "Summary" automatically — no extra steps required.
 | `files` | Explicit list of files to scan (space- or comma-separated). Skips auto-detection. | — |
 | `files-from` | Path to a newline-separated file list to scan. Skips auto-detection. | — |
 | `report-to-summary` | Append the markdown table to `$GITHUB_STEP_SUMMARY` automatically | `true` |
+| `comment-on-pr` | Post the report as a **single, updatable comment** on the PR (previous report comment is updated in place on re-runs). Requires `pull-requests: write` | `true` |
+| `comment-header` | Heading the action looks for when finding the previous comment to update | `mo3ta-coverage report` |
 | `working-directory` | Working directory for the CLI (for monorepos / sub-project checkouts) | — |
 
 ## How it works
@@ -60,6 +65,12 @@ the PR's "Summary" automatically — no extra steps required.
    below `limit`.
 5. When `report-to-summary: true` and `GITHUB_STEP_SUMMARY` is set, the
    action appends the markdown table to the job summary.
+6. When `comment-on-pr: true` (default) and the workflow ran on a
+   `pull_request` with a token that has `pull-requests: write`, the action
+   posts the report as a PR comment. It searches the PR's existing comments
+   for one containing the `comment-header` text: if found, that comment is
+   updated in place; otherwise a new comment is created. On non-PR events
+   (push, schedule, …) the step skips with a notice.
 
 ## Auto-resolved base
 

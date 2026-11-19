@@ -5,7 +5,8 @@ description: >-
   (naming convention + reverse-import walk), runs them with --coverage,
   and fails when changed-line coverage is below the limit. Writes a
   markdown coverage table that this action appends to the GitHub Actions
-  job summary.
+  job summary and (by default) posts as a single, updatable comment on
+  the PR.
 author: MahmoudMabrok
 
 branding:
@@ -56,6 +57,18 @@ inputs:
     description: Append the markdown coverage table to the GitHub Actions job summary
     required: false
     default: 'true'
+  comment-on-pr:
+    description: >-
+      Post the coverage report as a single, updatable comment on the PR
+      (the previous report comment is updated in place on re-runs).
+      Requires the pull_request event and a token with the 'pull-requests: write'
+      permission.
+    required: false
+    default: 'true'
+  comment-header:
+    description: Heading written at the top of the PR report comment; also used to find the previous comment and update it
+    required: false
+    default: mo3ta-coverage report
   working-directory:
     description: Working directory where the CLI is executed (must contain the git checkout)
     required: false
@@ -151,4 +164,54 @@ runs:
           cat "$MO3TA_CI_REPORT" >> "${GITHUB_STEP_SUMMARY}"
         else
           echo "::warning::Coverage report not found at $MO3TA_CI_REPORT"
+        fi
+
+    - name: Update (or create) the PR report comment
+      if: inputs.comment-on-pr == 'true' && inputs.ci == 'true' && env.MO3TA_CI_REPORT != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        MO3TA_CI_REPORT: ${{ inputs.ci-report-path }}
+        MO3TA_COMMENT_HEADER: ${{ inputs.comment-header }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        set -uo pipefail
+
+        if [ -z "$GITHUB_PR_NUMBER" ] || [ -z "$GITHUB_TOKEN" ] || [ -z "$GITHUB_REPOSITORY" ]; then
+          echo "Skipping PR comment: no pull_request number or token on this event."
+          exit 0
+        fi
+        if [ ! -f "$MO3TA_CI_REPORT" ]; then
+          echo "::warning::No report file at $MO3TA_CI_REPORT — nothing to comment."
+          exit 0
+        fi
+
+        # Single, updatable comment: update in place when a previous
+        # report comment (matched by header) exists on this PR.
+        OLD_ID=$(curl -sf -H "Authorization: Bearer $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/$GITHUB_PR_NUMBER/comments" \
+          | jq -r --arg h "$MO3TA_COMMENT_HEADER" \
+              '.[] | select(.body | contains($h)) | .id' | head -n 1 || echo "")
+
+        BODY=$(cat "$MO3TA_CI_REPORT")
+        if [ -n "$OLD_ID" ]; then
+          curl -sf -X PATCH \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/comments/$OLD_ID" \
+            --data "$(jq -n --arg b "$BODY" '{body: $b}')" > /dev/null
+          echo "Updated existing PR comment $OLD_ID."
+          echo "::notice::mo3ta-coverage: updated PR comment $OLD_ID"
+        else
+          curl -sf -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/$GITHUB_PR_NUMBER/comments" \
+            --data "$(jq -n --arg b "$BODY" '{body: $b}')" > /dev/null
+          echo "Created a new PR report comment."
+          echo "::notice::mo3ta-coverage: created PR report comment"
         fi

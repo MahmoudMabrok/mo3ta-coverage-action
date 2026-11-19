@@ -74,6 +74,9 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         MO3TA_BASE: ${{ inputs.base }}
+        MO3TA_EVENT: ${{ github.event_name }}
+        MO3TA_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        MO3TA_PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
         MO3TA_MODE: ${{ inputs.mode }}
         MO3TA_DEPTH: ${{ inputs.depth }}
         MO3TA_LIMIT: ${{ inputs.limit }}
@@ -89,14 +92,17 @@ runs:
         # Resolve the base ref: an explicit 'base' input wins, otherwise
         # auto-resolve per the triggering event.
         if [ -z "$MO3TA_BASE" ]; then
-          if [ -n "${GITHUB_BASE_REF:-}" ]; then
-            # Pull request: diff against the PR's base branch.
-            if git rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
-              MO3TA_BASE="origin/${GITHUB_BASE_REF}"
+          if [ -n "$MO3TA_PR_BASE_SHA" ]; then
+            # Pull request: diff against the exact base commit of the PR.
+            # The sha from the event payload is always present (works even
+            # with a shallow fetch) and is already included in the merge
+            # ref of the pull_request checkout.
+            if git rev-parse --verify --quiet "${MO3TA_PR_BASE_SHA}^{commit}" >/dev/null 2>&1; then
+              MO3TA_BASE="$MO3TA_PR_BASE_SHA"
             else
-              MO3TA_BASE="${GITHUB_BASE_REF}"
+              MO3TA_BASE="${GITHUB_BASE_REF:-origin/main}"
             fi
-          elif [ "${GITHUB_EVENT_NAME:-}" = "push" ]; then
+          elif [ "$MO3TA_EVENT" = "push" ]; then
             # Push: diff against the previous commit.
             if git rev-parse --verify --quiet "HEAD~1" >/dev/null 2>&1; then
               MO3TA_BASE="HEAD~1"

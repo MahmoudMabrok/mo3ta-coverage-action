@@ -34,7 +34,7 @@ the PR's "Summary" automatically — no extra steps required.
 
 | Input | Description | Default |
 |-------|-------------|---------|
-| `base` | Base branch/revision to diff against. Empty = auto-resolve: `pull_request` → `origin/<PR base branch>`, `push` → previous commit (`HEAD~1`, fallback `origin/main`), other events → `origin/main` | *(auto)* |
+| `base` | Base branch/revision to diff against. Empty = auto-resolve: `pull_request` → the PR's exact base commit, `push` → previous commit (`HEAD~1`, fallback `origin/main`), other events → `origin/main` | *(auto)* |
 | `mode` | `fast` (naming), `smart` (naming + reverse imports, default), `full` (`jest --findRelatedTests`) | `smart` |
 | `depth` | Max reverse-import depth for `smart` mode (1 = direct importers, 2 = also importers of importers) | `2` |
 | `limit` | Minimum changed-line coverage percentage | `80` |
@@ -68,7 +68,7 @@ triggering event:
 
 | Event | Resolved base | Notes |
 |-------|---------------|-------|
-| `pull_request` | `origin/<PR base branch>` | uses `github.base_ref`; needs the branch fetched (default checkout does this, or use `fetch-depth: 0`) |
+| `pull_request` | the PR's exact base commit | from `github.event.pull_request.base.sha` — stable even if the base branch moves while the check runs. Like any diff-against-base check it needs the history present in the checkout; use `fetch-depth: 0` in the checkout step (the example below does) |
 | `push` | `HEAD~1` (fallback `origin/main`) | changed lines of the push, regardless of branch |
 | anything else | `origin/main` | schedule, dispatch, … |
 

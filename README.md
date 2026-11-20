@@ -50,22 +50,29 @@ instead of stacking new comments. No extra steps required.
 | `comment-on-pr` | Post the report as a **single, updatable comment** on the PR (previous report comment is updated in place on re-runs). Requires `pull-requests: write` | `true` |
 | `comment-header` | Heading the action looks for when finding the previous comment to update | `mo3ta-coverage report` |
 | `working-directory` | Working directory for the CLI (for monorepos / sub-project checkouts) | — |
+| `cli-repository` | GitHub repo (owner/repo) that hosts the mo3ta-coverage CLI — fetched from GitHub at run time, not npm | `MahmoudMabrok/mo3ta-coverage` |
+| `cli-ref` | Branch, tag, or commit of the CLI repo to use. Empty = default branch = always latest | *(latest)* |
 
 ## How it works
 
 1. Runs on **Node 20**.
-2. Invokes `node <action>/dist/index.js` with the inputs mapped to the
-   published CLI's flags.
-3. The CLI finds files changed against `base` (all authors, via
+2. Fetches the mo3ta-coverage CLI **from GitHub, not npm**: a shallow
+   clone of `cli-repository` at `cli-ref` (default: the repo's default
+   branch, i.e. always the latest version), then `npm ci` of its
+   committed `package-lock.json` into a runner temp dir — the checkout's
+   own `package.json`/lock files are never touched.
+3. Invokes `node <cli>/index.js` with the inputs mapped to the CLI's
+   flags.
+4. The CLI finds files changed against `base` (all authors, via
    `merge-base`), maps each changed file to its related Jest test files
    using naming conventions and a depth-limited reverse-import walk,
    runs Jest with `--coverage`, parses `coverage/lcov.info`, and computes
    coverage on the changed lines only.
-4. Exits non-zero when tests fail **or** when changed-line coverage is
+5. Exits non-zero when tests fail **or** when changed-line coverage is
    below `limit`.
-5. When `report-to-summary: true` and `GITHUB_STEP_SUMMARY` is set, the
+6. When `report-to-summary: true` and `GITHUB_STEP_SUMMARY` is set, the
    action appends the markdown table to the job summary.
-6. When `comment-on-pr: true` (default) and the workflow ran on a
+7. When `comment-on-pr: true` (default) and the workflow ran on a
    `pull_request` with a token that has `pull-requests: write`, the action
    posts the report as a PR comment. It searches the PR's existing comments
    for one containing the `comment-header` text: if found, that comment is
@@ -93,21 +100,24 @@ resolves works (e.g. `base: HEAD~1`, `base: origin/develop`, `base: v1.0.0`).
     limit: 70
 ```
 
-## Pin to a specific version
+## Pin to a specific CLI version
 
-The npm package version is the source of truth. Currently the action repo
-tracks the CLI at `v1` = `1.0.24`. Pin to a semver, tag, or commit — see
-[the tag list](https://github.com/MahmoudMabrok/mo3ta-coverage-action/tags)
-once tags are cut.
+By default the action always tracks the **latest** CLI: it fetches the
+default branch of `MahmoudMabrok/mo3ta-coverage` on every run.
+
+To pin a specific CLI version, point `cli-ref` at a tag, branch, or
+commit of the [CLI repository](https://github.com/MahmoudMabrok/mo3ta-coverage):
 
 ```yaml
-uses: MahmoudMabrok/mo3ta-coverage-action@1.0.24
+- uses: MahmoudMabrok/mo3ta-coverage-action@main
+  with:
+    cli-ref: v1.1.0   # any tag / branch / commit of the CLI repo
 ```
 
 ## Related
 
-- [mo3ta-coverage (npm)](https://www.npmjs.com/package/mo3ta-coverage) —
-  the underlying CLI.
+- [mo3ta-coverage](https://github.com/MahmoudMabrok/mo3ta-coverage) —
+  the underlying CLI (fetched from this GitHub repo at run time).
 - [Full CLI docs](https://github.com/MahmoudMabrok/mo3ta-coverage#cli-options)
   in the main repo.
 

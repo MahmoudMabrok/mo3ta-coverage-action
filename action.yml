@@ -73,6 +73,19 @@ inputs:
     description: Working directory where the CLI is executed (must contain the git checkout)
     required: false
     default: ''
+  cli-repository:
+    description: >-
+      GitHub repository (owner/repo) that hosts the mo3ta-coverage CLI; it is
+      fetched from GitHub at runtime instead of npm. Defaults to the official
+      upstream repository.
+    required: false
+    default: MahmoudMabrok/mo3ta-coverage
+  cli-ref:
+    description: >-
+      Branch, tag, or commit of the CLI repository to use. Leave empty to
+      track the repository's default branch (always the latest version).
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -81,6 +94,47 @@ runs:
       uses: actions/setup-node@v4
       with:
         node-version: 20
+
+    - name: Fetch the latest mo3ta-coverage CLI from GitHub
+      shell: bash
+      env:
+        MO3TA_CLI_REPO: ${{ inputs.cli-repository }}
+        MO3TA_CLI_REF: ${{ inputs.cli-ref }}
+        MO3TA_CLI_DIR: ${{ runner.temp }}/mo3ta-coverage-cli
+        GITHUB_API_URL: ${{ github.api_url }}
+      run: |
+        set -euo pipefail
+
+        # The CLI is fetched from GitHub (not npm): a shallow clone of the
+        # repository plus its committed lock file, installed with npm ci so
+        # the exact pinned dependency set is used.
+        # Ref resolution: explicit ref > default branch (always latest).
+        # The default branch is resolved at runtime so the action keeps
+        # tracking the latest version even if the branch is ever renamed.
+        if [ -n "$MO3TA_CLI_REF" ]; then
+          REF="$MO3TA_CLI_REF"
+        else
+          REF=$(curl -sf -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$MO3TA_CLI_REPO" \
+            | jq -er '.default_branch')
+          echo "No 'cli-ref' input; using default branch '$REF' (latest version)."
+          echo "::notice::mo3ta-coverage: fetching $MO3TA_CLI_REPO @ $REF"
+        fi
+
+        rm -rf "$MO3TA_CLI_DIR"
+        git clone --depth 1 --single-branch \
+            ${REF:+"--branch" "$REF"} \
+            "https://github.com/$MO3TA_CLI_REPO.git" "$MO3TA_CLI_DIR"
+
+        # The CLI entry and its lock file must exist in the repo.
+        test -f "$MO3TA_CLI_DIR/index.js"
+        test -f "$MO3TA_CLI_DIR/package-lock.json"
+
+        # Install the CLI's dependencies into a temp dir (never the user's
+        # project, so its package.json/lock files are left untouched).
+        npm ci --prefix "$MO3TA_CLI_DIR" --no-audit --no-fund
+
+        echo "CLI ready: $(node "$MO3TA_CLI_DIR/index.js" --version)"
 
     - name: Run mo3ta-coverage
       shell: bash
@@ -98,7 +152,7 @@ runs:
         MO3TA_SHOW_COVERED: ${{ inputs.show-covered }}
         MO3TA_FILES: ${{ inputs.files }}
         MO3TA_FILES_FROM: ${{ inputs.files-from }}
-        MO3TA_ACTION_PATH: ${{ github.action_path }}
+        MO3TA_CLI_DIR: ${{ runner.temp }}/mo3ta-coverage-cli
       run: |
         set -uo pipefail
 
@@ -129,7 +183,7 @@ runs:
         fi
 
         ARGS=(
-          "node" "$MO3TA_ACTION_PATH/dist/index.js"
+          "node" "$MO3TA_CLI_DIR/index.js"
           "--base" "$MO3TA_BASE"
           "--mode" "$MO3TA_MODE"
           "--depth" "$MO3TA_DEPTH"
